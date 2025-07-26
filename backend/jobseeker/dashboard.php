@@ -1,59 +1,56 @@
 <?php
-// ✅ 1. Display errors temporarily (only for debugging)
-ini_set('display_errors', 1);
-error_reporting(E_ALL);
+include '../config/db.php';
 
-// ✅ 2. CORS headers for React to access
 header("Access-Control-Allow-Origin: http://localhost:3000");
-header("Access-Control-Allow-Methods: GET, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type");
+header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, Authorization");
 header("Content-Type: application/json");
 
-// ✅ 3. Handle preflight OPTIONS request
+// Handle preflight request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit();
 }
 
-// ✅ 4. DB Connection
-include_once('../config/db.php');
-
-// ✅ 5. Validate user ID
 $userId = $_GET['user_id'] ?? null;
+
 if (!$userId) {
+    http_response_code(400);
     echo json_encode(['success' => false, 'error' => 'Missing user_id']);
     exit;
 }
 
-// ✅ 6. Fetch seeker profile
-$userStmt = $pdo->prepare("SELECT full_name, email, role FROM users WHERE id = ?");
-$userStmt->execute([$userId]);
-$user = $userStmt->fetch(PDO::FETCH_ASSOC);
+try {
+    // ✅ Get PDO connection from your function
+    $pdo = getDBConnection();
 
-if (!$user) {
-    echo json_encode(['success' => false, 'error' => 'User not found']);
-    exit;
+    // Fetch user data
+    $stmt = $pdo->prepare("SELECT id, full_name, email, role FROM users WHERE id = ?");
+    $stmt->execute([$userId]);
+    $user = $stmt->fetch();
+
+    if (!$user) {
+        http_response_code(404);
+        echo json_encode(['success' => false, 'error' => 'User not found']);
+        exit;
+    }
+
+    // Fetch applied jobs
+    $stmt = $pdo->prepare("SELECT j.id, j.title, j.company, j.location, a.applied_at 
+                          FROM applications a
+                          JOIN jobs j ON a.job_id = j.id
+                          WHERE a.seeker_id = ?");
+    $stmt->execute([$userId]);
+    $appliedJobs = $stmt->fetchAll();
+
+    echo json_encode([
+        'success' => true,
+        'user' => $user,
+        'appliedJobs' => $appliedJobs
+    ]);
+
+} catch (PDOException $e) {
+    http_response_code(500);
+    echo json_encode(['success' => false, 'error' => 'Database error']);
 }
-
-// ✅ 7. Fetch applied jobs
-$sql = "SELECT j.id AS job_id, j.title, j.company, j.location, j.category,
-               a.applied_at, a.status
-        FROM applications a
-        JOIN jobs j ON a.job_id = j.id
-        WHERE a.seeker_id = ?";
-
-$stmt = $pdo->prepare($sql);
-$stmt->execute([$userId]);
-$applications = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-// ✅ 8. Return structured JSON response
-echo json_encode([
-    'success' => true,
-    'user' => [
-        'name' => $user['full_name'],
-        'email' => $user['email'],
-        'role' => $user['role']
-    ],
-    'appliedJobs' => $applications
-]);
 ?>

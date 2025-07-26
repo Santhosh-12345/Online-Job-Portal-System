@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import Header from '../components/Header';
 import JobCard from '../components/JobCard';
 import { Badge, Button, Spinner, Alert } from 'react-bootstrap';
 import { Briefcase, Search, Filter } from 'lucide-react';
@@ -25,23 +24,41 @@ const Jobs = () => {
   const [error, setError] = useState("");
 
   // Fetch jobs once
-  useEffect(() => {
-    fetch("http://localhost/job-portal/backend/employer/get-jobs.php")
-      .then(res => {
-        if (!res.ok) throw new Error("Failed to fetch jobs.");
-        return res.json();
-      })
-      .then(data => {
-        setJobs(data);
-        setFilteredJobs(data);
-      })
-      .catch(err => {
-        console.error(err);
-        setError("Could not load job listings. Try again later.");
-      })
-      .finally(() => setLoading(false));
-  }, []);
+ // Updated fetch implementation
+useEffect(() => {
+  const fetchJobs = async () => {
+    try {
+      setLoading(true);
+      setError("");
+      
+      const response = await fetch("http://localhost/job-portal/backend/jobseeker/get-jobs.php", {
+        credentials: 'include'
+      });
 
+      if (!response.ok) {
+        // Try to get error details from backend
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to fetch jobs");
+      }
+
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || "Invalid data received");
+      }
+
+      setJobs(data.jobs || []);
+      setFilteredJobs(data.jobs || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+      setError(err.message || "Could not load job listings. Try again later.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  fetchJobs();
+}, []);
   // Apply filters whenever inputs change
   useEffect(() => {
     let filtered = [...jobs];
@@ -166,16 +183,18 @@ const Jobs = () => {
                 {filteredJobs.map(job => (
                   <div key={job.id} className="col-md-6">
                     <JobCard
-                      id={job.id}
-                      title={job.title}
-                      company={job.company}
-                      location={job.location}
-                      type={job.type}
-                      salary={job.salary}
-                      description={job.description}
-                      postedDate={job.postedDate}
-                      onViewDetails={handleJobView}
-                    />
+  id={job.id}
+  title={job.title}
+  company={job.company}
+  location={job.location}
+  type={job.type}
+  salary={job.salary}
+  description={job.description}
+  postedDate={job.postedDate}
+  onViewDetails={handleJobView}
+  showApply={true} // ✅ Show Apply Button for seekers
+/>
+
                   </div>
                 ))}
               </div>

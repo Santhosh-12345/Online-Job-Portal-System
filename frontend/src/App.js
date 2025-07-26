@@ -1,6 +1,6 @@
 import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 
 import Header from "./components/Header";
 import Home from "./components/Home";
@@ -11,16 +11,25 @@ import PostJob from "./components/PostJob";
 import NotFound from "./components/NotFound";
 import Dashboard from "./components/Dashboard";
 import EmployeeDashboard from "./components/EmployeeDashboard";
+import Logout from "./components/Logout";
 
 const queryClient = new QueryClient();
 
-// ✅ Protected Route component
-const PrivateRoute = ({ children }) => {
+const PrivateRoute = ({ children, allowedRoles }) => {
   const userId = localStorage.getItem("userId");
-  return userId ? children : <Navigate to="/login" replace />;
+  const userRole = localStorage.getItem("userRole");
+  
+  if (!userId) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  if (allowedRoles && !allowedRoles.includes(userRole)) {
+    return <Navigate to="/" replace />;
+  }
+  
+  return children;
 };
 
-// ✅ Layout wrapper to optionally hide Header
 const Layout = ({ children }) => {
   const location = useLocation();
   const hideHeaderPaths = ["/login", "/register"];
@@ -44,22 +53,32 @@ const App = () => {
             <Route path="/jobs" element={<Jobs />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
-            <Route path="/post-job" element={<PostJob />} />
+            <Route path="/logout" element={<Logout />} />
 
-            {/* ✅ Protected Routes */}
+            {/* Employer Routes */}
             <Route
-              path="/dashboard"
+              path="/post-job"
               element={
-                <PrivateRoute>
-                  <Dashboard />
+                <PrivateRoute allowedRoles={['employer']}>
+                  <PostJob />
                 </PrivateRoute>
               }
             />
             <Route
-              path="/EmployeeDashboard"
+              path="/employer-dashboard"
               element={
-                <PrivateRoute>
+                <PrivateRoute allowedRoles={['employer']}>
                   <EmployeeDashboard />
+                </PrivateRoute>
+              }
+            />
+
+            {/* Job Seeker Routes */}
+            <Route
+              path="/dashboard"
+              element={
+                <PrivateRoute allowedRoles={['jobseeker']}>
+                  <Dashboard />
                 </PrivateRoute>
               }
             />

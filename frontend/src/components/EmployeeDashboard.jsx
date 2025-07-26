@@ -1,194 +1,393 @@
-import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { 
+  Container, 
+  Row, 
+  Col, 
+  Card, 
+  Table, 
+  Alert, 
+  Spinner, 
+  Button,
+  Badge,
+  Modal,
+  Form,
+  FormControl,
+  FloatingLabel
+} from 'react-bootstrap';
+import { 
+  FiRefreshCw, 
+  FiPlusCircle, 
+  FiLogOut,
+  FiTrash2,
+  FiAlertCircle,
+  FiExternalLink
+} from 'react-icons/fi';
+
+const API_BASE_URL = 'http://localhost/job-portal/backend';
 
 const EmployeeDashboard = () => {
-  const [user, setUser] = useState(null);
-  const [postedJobs, setPostedJobs] = useState([]);
-  const [applications, setApplications] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [showPostForm, setShowPostForm] = useState(false);
-
-  const [newJob, setNewJob] = useState({
-    title: "",
-    company: "",
-    location: "",
-    type: "",
-    salary: "",
-    description: "",
-    skills: "",
-    category: "",
+  const [dashboardData, setDashboardData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [jobToDelete, setJobToDelete] = useState(null);
+  const [showJobForm, setShowJobForm] = useState(false);
+  const [formData, setFormData] = useState({
+    title: '',
+    company: '',
+    location: '',
+    type: 'Full-time',
+    salary: '',
+    description: '',
+    skills: '',
+    category: 'IT'
   });
-
-  const categoryOptions = [
-    "IT",
-    "Finance",
-    "Healthcare",
-    "Education",
-    "Engineering",
-    "Marketing",
-    "Legal",
-    "Hospitality",
-  ];
-
   const navigate = useNavigate();
-  const userId = localStorage.getItem("userId");
-  const role = localStorage.getItem("userRole");
 
-  useEffect(() => {
-    if (!userId || role !== "employer") {
-      alert("Unauthorized access. Please login as Employer.");
-      navigate("/login");
+  // Fetch dashboard data
+  const fetchDashboardData = async () => {
+    const userId = localStorage.getItem('userId');
+    if (!userId) {
+      navigate('/login');
       return;
     }
 
-    const fetchEmployerData = async () => {
-      try {
-        const res = await fetch("http://localhost/job-portal/backend/employer/dashboard.php", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId }),
-        });
+    setLoading(true);
+    setError(null);
 
-        const data = await res.json();
-        if (data.success) {
-          setPostedJobs(data.postedJobs || []);
-          setApplications(data.applications || []);
-          setUser(data.user || null);
-        } else {
-          alert("Failed to load employer data.");
-        }
-      } catch (error) {
-        console.error("Error:", error);
-        alert("Something went wrong while loading the dashboard.");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchEmployerData();
-  }, [userId, role, navigate]);
-
-  const handleLogout = () => {
-    localStorage.removeItem("userId");
-    localStorage.removeItem("userRole");
-    navigate("/login");
-  };
-
-  const handleInputChange = (e) => {
-    setNewJob({ ...newJob, [e.target.name]: e.target.value });
-  };
-
-  const handlePostJob = async (e) => {
-    e.preventDefault();
     try {
-      const res = await fetch("http://localhost/job-portal/backend/employer/post_job.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...newJob, posted_by: userId }),
-      });
+      const response = await fetch(
+        `${API_BASE_URL}/employer/employer_dashboard.php?user_id=${userId}`,
+        { credentials: 'include' }
+      );
 
-      const data = await res.json();
-      if (data.success) {
-        alert("Job posted successfully!");
-        setShowPostForm(false);
-        setNewJob({
-          title: "",
-          company: "",
-          location: "",
-          type: "",
-          salary: "",
-          description: "",
-          skills: "",
-          category: "",
-        });
-        window.location.reload();
-      } else {
-        alert("Failed to post job.");
-      }
-    } catch (error) {
-      console.error("Post Job Error:", error);
-      alert("Error posting job.");
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error || "Request failed");
+
+      setDashboardData(result);
+    } catch (err) {
+      console.error('Fetch error:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  if (isLoading) return <div className="container mt-5">Loading...</div>;
+  // Handle logout
+  const handleLogout = () => {
+    localStorage.removeItem('userId');
+    navigate('/login');
+  };
+
+  // Handle job form input changes
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  // Submit new job
+  const handleJobSubmit = async (e) => {
+  e.preventDefault();
+  try {
+    const response = await fetch(`${API_BASE_URL}/employer/post_job.php`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...formData,
+        user_id: localStorage.getItem('userId'),
+        skills: formData.skills.split(',').map(skill => skill.trim()),
+      }),
+      credentials: 'include'
+    });
+
+    // First check if response is OK (status 200-299)
+    if (!response.ok) {
+      // Try to get error details from response
+      let errorData;
+      try {
+        errorData = await response.json();
+        throw new Error(errorData.error || errorData.message || `Request failed with status ${response.status}`);
+      } catch (e) {
+        // If JSON parsing fails, get the raw text
+        const text = await response.text();
+        throw new Error(text || `Request failed with status ${response.status}`);
+      }
+    }
+
+    const result = await response.json();
+    if (!result.success) {
+      throw new Error(result.error || result.message || "Posting failed");
+    }
+
+    setShowJobForm(false);
+    setFormData({
+      title: '',
+      company: '',
+      location: '',
+      type: 'Full-time',
+      salary: '',
+      description: '',
+      skills: '',
+      category: 'IT'
+    });
+    fetchDashboardData();
+  } catch (err) {
+    console.error('Post job error:', err);
+    setError(err.message);
+  }
+};
+
+  // Delete job
+  const handleDeleteJob = async () => {
+    if (!jobToDelete) return;
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/employer/delete_job.php?job_id=${jobToDelete}`,
+        { method: 'DELETE', credentials: 'include' }
+      );
+      if (!response.ok) throw new Error('Failed to delete job');
+      fetchDashboardData();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setShowDeleteModal(false);
+    }
+  };
+
+  useEffect(() => { fetchDashboardData(); }, []);
+
+  if (loading) {
+    return (
+      <Container className="d-flex justify-content-center align-items-center" style={{ minHeight: '80vh' }}>
+        <div className="text-center">
+          <Spinner animation="border" variant="primary" className="mb-3" />
+          <h5>Loading Employer Dashboard</h5>
+        </div>
+      </Container>
+    );
+  }
+
+  if (error) {
+    return (
+      <Container className="mt-5">
+        <Alert variant="danger" className="shadow">
+          <Alert.Heading><FiAlertCircle className="me-2" />Error</Alert.Heading>
+          <div className="mb-3">{error}</div>
+          <Button variant="primary" onClick={fetchDashboardData}>
+            <FiRefreshCw className="me-2" />Try Again
+          </Button>
+        </Alert>
+      </Container>
+    );
+  }
 
   return (
-    <div className="container mt-5">
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <h2>Employer Dashboard</h2>
-        <button className="btn btn-danger" onClick={handleLogout}>Logout</button>
-      </div>
+    <Container className="py-4">
+      {/* Delete Confirmation Modal */}
+      <Modal show={showDeleteModal} onHide={() => setShowDeleteModal(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Confirm Deletion</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>Are you sure you want to delete this job posting?</Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowDeleteModal(false)}>Cancel</Button>
+          <Button variant="danger" onClick={handleDeleteJob}>Delete Job</Button>
+        </Modal.Footer>
+      </Modal>
 
-      <div className="mb-4">
-        <button className="btn btn-primary" onClick={() => setShowPostForm(!showPostForm)}>
-          {showPostForm ? "Cancel" : "➕ Post a New Job"}
-        </button>
-      </div>
+      {/* Job Posting Modal */}
+      <Modal show={showJobForm} onHide={() => setShowJobForm(false)} size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title>Post New Job</Modal.Title>
+        </Modal.Header>
+        <Form onSubmit={handleJobSubmit}>
+          <Modal.Body>
+            <Row className="g-3 mb-3">
+              <Col md={6}>
+                <FloatingLabel controlId="title" label="Job Title">
+                  <FormControl
+                    type="text"
+                    name="title"
+                    value={formData.title}
+                    onChange={handleInputChange}
+                    required
+                  />
+                </FloatingLabel>
+              </Col>
+              <Col md={6}>
+                <FloatingLabel controlId="company" label="Company">
+                  <FormControl
+                    type="text"
+                    name="company"
+                    value={formData.company}
+                    onChange={handleInputChange}
+                    required
+                  />
+                </FloatingLabel>
+              </Col>
+            </Row>
+            
+            <Row className="g-3 mb-3">
+              <Col md={6}>
+                <FloatingLabel controlId="location" label="Location">
+                  <FormControl
+                    type="text"
+                    name="location"
+                    value={formData.location}
+                    onChange={handleInputChange}
+                    required
+                  />
+                </FloatingLabel>
+              </Col>
+              <Col md={6}>
+                <FloatingLabel controlId="type" label="Job Type">
+                  <Form.Select
+                    name="type"
+                    value={formData.type}
+                    onChange={handleInputChange}
+                    required
+                  >
+                    <option value="Full-time">Full-time</option>
+                    <option value="Part-time">Part-time</option>
+                    <option value="Contract">Contract</option>
+                    <option value="Remote">Remote</option>
+                  </Form.Select>
+                </FloatingLabel>
+              </Col>
+            </Row>
+            
+            <Row className="g-3 mb-3">
+              <Col md={6}>
+                <FloatingLabel controlId="salary" label="Salary">
+                  <FormControl
+                    type="text"
+                    name="salary"
+                    value={formData.salary}
+                    onChange={handleInputChange}
+                  />
+                </FloatingLabel>
+              </Col>
+              <Col md={6}>
+                <FloatingLabel controlId="category" label="Category">
+                  <Form.Select
+                    name="category"
+                    value={formData.category}
+                    onChange={handleInputChange}
+                    required
+                  >
+                    <option value="IT">IT</option>
+                    <option value="Finance">Finance</option>
+                    <option value="Healthcare">Healthcare</option>
+                    <option value="Education">Education</option>
+                    <option value="Marketing">Marketing</option>
+                    <option value="Other">Other</option>
+                  </Form.Select>
+                </FloatingLabel>
+              </Col>
+            </Row>
+            
+            <FloatingLabel controlId="skills" label="Skills (comma separated)" className="mb-3">
+              <FormControl
+                type="text"
+                name="skills"
+                value={formData.skills}
+                onChange={handleInputChange}
+                placeholder="JavaScript, PHP, React, etc."
+                required
+              />
+            </FloatingLabel>
+            
+            <FloatingLabel controlId="description" label="Job Description">
+              <FormControl
+                as="textarea"
+                name="description"
+                value={formData.description}
+                onChange={handleInputChange}
+                style={{ height: '150px' }}
+                required
+              />
+            </FloatingLabel>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => setShowJobForm(false)}>Cancel</Button>
+            <Button variant="primary" type="submit">Post Job</Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
 
-      {showPostForm && (
-        <form className="mb-4" onSubmit={handlePostJob}>
-          <div className="row">
-            <div className="col-md-6 mb-2">
-              <input type="text" className="form-control" name="title" placeholder="Job Title" value={newJob.title} onChange={handleInputChange} required />
-            </div>
-            <div className="col-md-6 mb-2">
-              <input type="text" className="form-control" name="company" placeholder="Company Name" value={newJob.company} onChange={handleInputChange} required />
-            </div>
-            <div className="col-md-6 mb-2">
-              <input type="text" className="form-control" name="location" placeholder="Location" value={newJob.location} onChange={handleInputChange} required />
-            </div>
-            <div className="col-md-6 mb-2">
-              <input type="text" className="form-control" name="type" placeholder="Job Type (e.g., Full-time, Part-time)" value={newJob.type} onChange={handleInputChange} required />
-            </div>
-            <div className="col-md-6 mb-2">
-              <input type="number" className="form-control" name="salary" placeholder="Salary" value={newJob.salary} onChange={handleInputChange} required />
-            </div>
-            <div className="col-md-6 mb-2">
-              <select className="form-control" name="category" value={newJob.category} onChange={handleInputChange} required>
-                <option value="">Select Category</option>
-                {categoryOptions.map((cat, index) => (
-                  <option key={index} value={cat}>{cat}</option>
+      {/* Dashboard Header */}
+      <Row className="mb-4 align-items-center">
+        <Col>
+          <h2 className="fw-bold mb-1">Employer Dashboard</h2>
+          <p className="text-muted mb-0">Welcome back! Manage your job postings</p>
+        </Col>
+        <Col className="d-flex justify-content-end gap-2">
+          <Button variant="outline-danger" onClick={handleLogout}>
+            <FiLogOut className="me-2" /> Logout
+          </Button>
+          <Button variant="primary" onClick={() => setShowJobForm(true)}>
+            <FiPlusCircle className="me-2" /> Post New Job
+          </Button>
+        </Col>
+      </Row>
+
+      {/* Job Postings Section */}
+      <Card className="shadow-sm">
+        <Card.Header className="d-flex justify-content-between align-items-center">
+          <Card.Title className="mb-0">Your Job Postings</Card.Title>
+          <Button variant="outline-primary" size="sm" onClick={fetchDashboardData}>
+            <FiRefreshCw size={14} />
+          </Button>
+        </Card.Header>
+        <Card.Body>
+          {dashboardData?.jobs?.length > 0 ? (
+            <Table hover responsive>
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Company</th>
+                  <th>Type</th>
+                  <th>Category</th>
+                  <th className="text-end">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dashboardData.jobs.map(job => (
+                  <tr key={job.id}>
+                    <td>{job.title}</td>
+                    <td>{job.company}</td>
+                    <td><Badge bg="info">{job.type}</Badge></td>
+                    <td><Badge bg="secondary">{job.category}</Badge></td>
+                    <td className="text-end">
+                      <Button
+                        variant="outline-danger"
+                        size="sm"
+                        onClick={() => {
+                          setJobToDelete(job.id);
+                          setShowDeleteModal(true);
+                        }}
+                      >
+                        <FiTrash2 />
+                      </Button>
+                    </td>
+                  </tr>
                 ))}
-              </select>
-            </div>
-            <div className="col-12 mb-2">
-              <textarea className="form-control" name="description" placeholder="Job Description" rows="3" value={newJob.description} onChange={handleInputChange} required />
-            </div>
-            <div className="col-12 mb-2">
-              <input type="text" className="form-control" name="skills" placeholder="Required Skills (comma-separated)" value={newJob.skills} onChange={handleInputChange} required />
-            </div>
-          </div>
-          <button type="submit" className="btn btn-success mt-2">Post Job</button>
-        </form>
-      )}
-
-      <h4>📋 Your Posted Jobs</h4>
-      <ul className="list-group mb-4">
-        {postedJobs.length === 0 ? (
-          <li className="list-group-item">You haven't posted any jobs yet.</li>
-        ) : (
-          postedJobs.map((job, index) => (
-            <li key={index} className="list-group-item">
-              <strong>{job.title}</strong> — {job.location} | {job.category} | ₹{job.salary}
-            </li>
-          ))
-        )}
-      </ul>
-
-      <h4>📨 Applications Received</h4>
-      <ul className="list-group">
-        {applications.length === 0 ? (
-          <li className="list-group-item">No applications received yet.</li>
-        ) : (
-          applications.map((app, index) => (
-            <li key={index} className="list-group-item">
-              <strong>{app.applicant_name}</strong> applied for <strong>{app.title}</strong> — Status: <em>{app.status}</em>
-            </li>
-          ))
-        )}
-      </ul>
-    </div>
+              </tbody>
+            </Table>
+          ) : (
+            <Alert variant="info" className="text-center">
+              <p className="mb-2">You haven't posted any jobs yet.</p>
+              <Button variant="primary" size="sm" onClick={() => setShowJobForm(true)}>
+                <FiPlusCircle className="me-1" /> Create your first job posting
+              </Button>
+            </Alert>
+          )}
+        </Card.Body>
+      </Card>
+    </Container>
   );
 };
 

@@ -2,77 +2,101 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 const Dashboard = () => {
-  const [user, setUser] = useState(null);
-  const [appliedJobs, setAppliedJobs] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const userId = localStorage.getItem("userId");
-  const role = localStorage.getItem("userRole");
+  const [userData, setUserData] = useState(null);
+  const [jobs, setJobs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!userId || role !== "jobseeker") {
-      alert("Unauthorized access. Please login as Job Seeker.");
+    const userId = localStorage.getItem("userId");
+    const userRole = localStorage.getItem("userRole");
+
+    if (!userId || userRole !== "jobseeker") {
       navigate("/login");
       return;
     }
 
-    const fetchJobSeekerData = async () => {
+    const fetchData = async () => {
       try {
-        const res = await fetch("http://localhost/job-portal/backend/jobseeker/dashboard.php", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId }),
-        });
+        const response = await fetch(
+          `http://localhost/job-portal/backend/jobseeker/dashboard.php?user_id=${userId}`,
+          {
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": "Bearer " + localStorage.getItem("token") // If using tokens
+            }
+          }
+        );
 
-        const data = await res.json();
-        if (data.success) {
-          setUser(data.user || null);
-          setAppliedJobs(data.appliedJobs || []);
-        } else {
-          alert("Failed to load dashboard data.");
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
-      } catch (err) {
-        console.error(err);
-        alert("Error fetching data.");
+
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          throw new TypeError("Response is not JSON");
+        }
+
+        const data = await response.json();
+
+        if (!data.success) {
+          throw new Error(data.error || "Failed to load data");
+        }
+
+        setUserData(data.user);
+        setJobs(data.appliedJobs || []);
+      } catch (error) {
+        console.error("Dashboard error:", error);
+        setError(error.message);
+        if (error.message.includes("token") || error.message.includes("authenticate")) {
+          localStorage.clear();
+          navigate("/login");
+        }
       } finally {
-        setIsLoading(false);
+        setLoading(false);
       }
     };
 
-    fetchJobSeekerData();
-  }, [userId, role, navigate]);
+    fetchData();
+  }, [navigate]);
 
   const handleLogout = () => {
-    localStorage.removeItem("userId");
-    localStorage.removeItem("userRole");
+    localStorage.clear();
     navigate("/login");
   };
 
-  if (isLoading) return <div className="container mt-5">Loading...</div>;
+  if (loading) return <div className="text-center p-5">Loading...</div>;
+
+  if (error) return <div className="alert alert-danger">{error}</div>;
 
   return (
     <div className="container mt-5">
       <div className="d-flex justify-content-between align-items-center mb-4">
-        <h2>Welcome, {user?.name || "User"}</h2>
-        <button className="btn btn-danger" onClick={handleLogout}>Logout</button>
+        <h2>Welcome, {userData?.full_name || "User"}</h2>
+        <button className="btn btn-danger" onClick={handleLogout}>
+          Logout
+        </button>
       </div>
 
-      <p><strong>Email:</strong> {user?.email}</p>
-      <p><strong>Role:</strong> {user?.role}</p>
-
-      <h4 className="mt-4">🧾 Jobs You've Applied To</h4>
-      <ul className="list-group">
-        {appliedJobs.length === 0 ? (
-          <li className="list-group-item">No applications yet.</li>
+      <div className="mb-4">
+        <h4>Your Applications</h4>
+        {jobs.length === 0 ? (
+          <p>You haven't applied to any jobs yet.</p>
         ) : (
-          appliedJobs.map((job, index) => (
-            <li key={index} className="list-group-item">
-              <strong>{job.title}</strong> — Status: <em>{job.status}</em>
-            </li>
-          ))
+          <ul className="list-group">
+            {jobs.map((job, index) => (
+              <li key={index} className="list-group-item">
+                <h5>{job.title}</h5>
+                <p className="mb-1">{job.company} - {job.location}</p>
+                <small className="text-muted">
+                  Applied on: {new Date(job.applied_at).toLocaleDateString()}
+                </small>
+              </li>
+            ))}
+          </ul>
         )}
-      </ul>
+      </div>
     </div>
   );
 };
